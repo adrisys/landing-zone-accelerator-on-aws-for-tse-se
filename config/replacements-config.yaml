@@ -13,259 +13,37 @@ globalReplacements:
   # Home Region
   - key: AcceleratorHomeRegion
     type: String
-    value: ca-central-1
+    value: eu-west-1
   # Sandbox regions (used to allow services in Sandbox SCP)
   - key: SandboxAllowedRegions
     type: StringList
     value:
-      - "ca-central-1"
-      - "us-east-1"
-      - "us-east-2"
-      - "us-west-1"
-      - "us-west-2"
+      - "eu-west-1"
+      - "eu-south-2"
   # List of enabled regions excluding the home region
   # (used to exclude deployment of some configurations in non-home regions)
   - key: OtherEnabledRegions
     type: StringList
     value:
-      - "ap-northeast-1"
-      - "ap-northeast-2"
-      - "ap-northeast-3"
-      - "ap-south-1"
-      - "ap-southeast-1"
-      - "ap-southeast-2"
-      - "eu-central-1"
-      - "eu-north-1"
-      - "eu-west-1"
-      - "eu-west-2"
-      - "eu-west-3"
-      - "sa-east-1"
-      - "us-east-1"
-      - "us-east-2"
-      - "us-west-1"
-      - "us-west-2"
+      - "eu-south-2"
   # Security notification emails
   - key: SecurityHigh
     type: String
-    value: <notify-high>@example.com
+    value: adri@adrilab.com
   - key: SecurityMedium
     type: String
-    value: <notify-medium>@example.com
+    value: adri@adrilab.com
   - key: SecurityLow
     type: String
-    value: <notify-low>@example.com
+    value: adri@adrilab.com
   - key: SecurityIgnore
     type: String
-    value: <notify-ignore>@example.com
+    value: adri@adrilab.com
   # Budget notification emails
   - key: BudgetEmail
     type: String
-    value: <budget-alert>@example.com
-  # Name of CloudWatch log group that centralizes CloudTrail logs. Referenced by CloudWatch metrics and alarms
+    value: adri@adrilab.com
+  # Name of CloudWatch log group that centralizes CloudTrail logs
   - key: CloudTrailLogGroup
     type: String
-    value: aws-accelerator-cloudtrail-logs # UPDATE If using ControlTower change this to 'aws-controltower/CloudTrailLogs'
-  # Managed Active Directory settings
-  - key: MadDnsName
-    type: String
-    value: example.local
-  - key: MadNetbiosDomainName
-    type: String
-    value: example
-  - key: ActiveDirectoryConnectorEmail
-    type: String
-    value: example-adconnector-user@example.com
-  - key: ActiveDirectoryUserEmail
-    type: String
-    value: example-user1@example.com
-  - key: ActiveDirectoryReadonlyUserEmail
-    type: String
-    value: example-user2@example.com
-  ###### IPAM ######
-  - key: sandboxCidr
-    type: String
-    value: 10.0.0.0/8
-  - key: AcceleratorIpamSupernet
-    type: String
-    value: 10.0.0.0/8
-  ###### Reserved IP addresses ######
-  ###### OnPremisesPrefixList is used to define which on-premises CIDR range can access managed cloud instances ######
-  ###### If you wish to add multiple on-premise ranges, you can add them to the network-config.yaml under prefixLists/onpremises-prefix-list/entries ######
-  - key: OnPremisesPrefixList
-    type: String
-    value: 10.1.0.1/32
-  ###### Static Endpoint VPC allocations ######
-  - key: VpcEndpointCidr
-    type: String
-    value: 10.7.0.0/22
-  - key: Subnet-Endpoint-A
-    type: String
-    value: 10.7.0.0/24
-  - key: Subnet-Endpoint-B
-    type: String
-    value: 10.7.1.0/24
-  - key: Subnet-EndpointTgwAttach-A
-    type: String
-    value: 10.7.3.208/28
-  - key: Subnet-EndpointTgwAttach-B
-    type: String
-    value: 10.7.3.224/28
-  ###### Static Perimeter VPC allocations ######
-  - key: VpcPerimeterCidr
-    type: String
-    value: 10.7.4.0/22
-  - key: Subnet-Perimeter-A
-    type: String
-    value: 10.7.4.0/24
-  - key: Subnet-Perimeter-B
-    type: String
-    value: 10.7.5.0/24
-  - key: Subnet-Perimeter-Nat-A
-    type: String
-    value: 10.7.7.176/28
-  - key: Subnet-Perimeter-Nat-B
-    type: String
-    value: 10.7.7.192/28
-  - key: Subnet-Perimeter-Tgw-A
-    type: String
-    value: 10.7.7.208/28
-  - key: Subnet-Perimeter-Tgw-B
-    type: String
-    value: 10.7.7.224/28
-  ###### Static Dev VPC allocations ######
-  - key: VpcDevCidr
-    type: String
-    value: 10.2.0.0/16
-  - key: Subnet-Dev-Web-A
-    type: String
-    value: 10.2.16.0/20
-  - key: Subnet-Dev-Web-B
-    type: String
-    value: 10.2.32.0/20
-  - key: Subnet-Dev-App-A
-    type: String
-    value: 10.2.64.0/19
-  - key: Subnet-Dev-App-B
-    type: String
-    value: 10.2.96.0/19
-  - key: Subnet-Dev-Data-A
-    type: String
-    value: 10.2.160.0/20
-  - key: Subnet-Dev-Data-B
-    type: String
-    value: 10.2.176.0/20
-  - key: Subnet-Dev-Mgmt-A
-    type: String
-    value: 10.2.8.0/21
-  - key: Subnet-Dev-Mgmt-B
-    type: String
-    value: 10.2.208.0/21
-  - key: Subnet-Dev-MainTgwAttach-A
-    type: String
-    value: 10.2.0.0/27
-  - key: Subnet-Dev-MainTgwAttach-B
-    type: String
-    value: 10.2.0.32/27
-  ###### Static Test VPC allocations ######
-  - key: VpcTestCidr
-    type: String
-    value: 10.3.0.0/16
-  - key: Subnet-Test-Web-A
-    type: String
-    value: 10.3.16.0/20
-  - key: Subnet-Test-Web-B
-    type: String
-    value: 10.3.32.0/20
-  - key: Subnet-Test-App-A
-    type: String
-    value: 10.3.64.0/19
-  - key: Subnet-Test-App-B
-    type: String
-    value: 10.3.96.0/19
-  - key: Subnet-Test-Data-A
-    type: String
-    value: 10.3.160.0/20
-  - key: Subnet-Test-Data-B
-    type: String
-    value: 10.3.176.0/20
-  - key: Subnet-Test-Mgmt-A
-    type: String
-    value: 10.3.8.0/21
-  - key: Subnet-Test-Mgmt-B
-    type: String
-    value: 10.3.208.0/21
-  - key: Subnet-Test-MainTgwAttach-A
-    type: String
-    value: 10.3.0.0/27
-  - key: Subnet-Test-MainTgwAttach-B
-    type: String
-    value: 10.3.0.32/27
-  ###### Static Prod VPC allocations ######
-  - key: VpcProdCidr
-    type: String
-    value: 10.4.0.0/16
-  - key: Subnet-Prod-Web-A
-    type: String
-    value: 10.4.16.0/20
-  - key: Subnet-Prod-Web-B
-    type: String
-    value: 10.4.32.0/20
-  - key: Subnet-Prod-App-A
-    type: String
-    value: 10.4.64.0/19
-  - key: Subnet-Prod-App-B
-    type: String
-    value: 10.4.96.0/19
-  - key: Subnet-Prod-Data-A
-    type: String
-    value: 10.4.160.0/20
-  - key: Subnet-Prod-Data-B
-    type: String
-    value: 10.4.176.0/20
-  - key: Subnet-Prod-Mgmt-A
-    type: String
-    value: 10.4.8.0/21
-  - key: Subnet-Prod-Mgmt-B
-    type: String
-    value: 10.4.208.0/21
-  - key: Subnet-Prod-MainTgwAttach-A
-    type: String
-    value: 10.4.0.0/27
-  - key: Subnet-Prod-MainTgwAttach-B
-    type: String
-    value: 10.4.0.32/27
-  ###### Static Central VPC allocations ######
-  - key: VpcCentralCidr
-    type: String
-    value: 10.1.0.0/16
-  - key: Subnet-Central-Web-A
-    type: String
-    value: 10.1.16.0/20
-  - key: Subnet-Central-Web-B
-    type: String
-    value: 10.1.32.0/20
-  - key: Subnet-Central-App-A
-    type: String
-    value: 10.1.64.0/19
-  - key: Subnet-Central-App-B
-    type: String
-    value: 10.1.96.0/19
-  - key: Subnet-Central-Data-A
-    type: String
-    value: 10.1.160.0/20
-  - key: Subnet-Central-Data-B
-    type: String
-    value: 10.1.176.0/20
-  - key: Subnet-Central-Mgmt-A
-    type: String
-    value: 10.1.8.0/21
-  - key: Subnet-Central-Mgmt-B
-    type: String
-    value: 10.1.208.0/21
-  - key: Subnet-Central-MainTgwAttach-A
-    type: String
-    value: 10.1.0.0/27
-  - key: Subnet-Central-MainTgwAttach-B
-    type: String
-    value: 10.1.0.32/27
-#####
+    value: aws-accelerator-cloudtrail-logs

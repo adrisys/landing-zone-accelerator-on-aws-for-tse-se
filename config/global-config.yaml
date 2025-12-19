@@ -1,428 +1,52 @@
-homeRegion: {{AcceleratorHomeRegion}}
-configVersion: 1.13.1-b
-enabledRegions: [{{AcceleratorHomeRegion}}, {{OtherEnabledRegions}}]
-managementAccountAccessRole: OrganizationAccountAccessRole # UPDATE: If using Control Tower, set to AWSControlTowerExecution
+######################################################################
+# CHEAP-MODE LZA CONFIGURATION - Minimal cost baseline
+# No Control Tower, single region, minimal logging
+######################################################################
+homeRegion: "{{ AcceleratorHomeRegion }}"
+enabledRegions:
+  - "{{ AcceleratorHomeRegion }}"
+  - eu-south-2
+# Using OrganizationAccountAccessRole since we're NOT using Control Tower
+managementAccountAccessRole: OrganizationAccountAccessRole
 tags:
   - key: Accelerator
-    value: '{{ AcceleratorPrefix }}'
-cloudwatchLogRetentionInDays: 731
-terminationProtection: true
+    value: "{{ AcceleratorPrefix }}"
+# Short retention to minimize CloudWatch Logs costs
+cloudwatchLogRetentionInDays: 7
+terminationProtection: false
 cdkOptions:
   centralizeBuckets: true
-  useManagementAccessRole: false
-  customDeploymentRole: "{{AcceleratorPrefix}}-PipelineRole"
-  forceBootstrap: true
-snsTopics:
-  deploymentTargets:
-    accounts:
-      - Management
-      - Audit
-  topics:
-    - name: SecurityHigh
-      emailAddresses:
-        - "{{ SecurityHigh }}"
-    - name: SecurityMedium
-      emailAddresses:
-        - "{{ SecurityMedium }}"
-    - name: SecurityLow
-      emailAddresses:
-        - "{{ SecurityLow }}"
-    - name: SecurityIgnore
-      emailAddresses:
-        - "{{ SecurityIgnore }}"
+  useManagementAccessRole: true
+# Control Tower is disabled
 controlTower:
-  enable: false # UPDATE if using Control Tower, set to true
-  # UPDATE If using ControlTower, uncomment the following block and set the version to ControlTower latest available version
-  # landingZone:
-  #   version: '3.3'
-  #   logging:
-  #     loggingBucketRetentionDays: 365
-  #     accessLoggingBucketRetentionDays: 3650
-  #     organizationTrail: true
-  #   security:
-  #     enableIdentityCenterAccess: true
+  enable: false
+# Minimal logging configuration
 logging:
   account: LogArchive
   cloudtrail:
     enable: true
     organizationTrail: true
     organizationTrailSettings:
-      multiRegionTrail: true
+      multiRegionTrail: false
       globalServiceEvents: true
-      managementEvents: true # UPDATE If using ControlTower, set to False. Control Tower already configures an organization trail for management events
-      s3DataEvents: true
+      managementEvents: true
+      s3DataEvents: false
       lambdaDataEvents: false
-      sendToCloudWatchLogs: true
+      sendToCloudWatchLogs: false
       apiErrorRateInsight: false
-      apiCallRateInsight: true
-    accountTrails:
-      - name: AccountTrail
-        regions:
-          - "{{ AcceleratorHomeRegion }}"
-        deploymentTargets:
-          accounts: []
-          organizationalUnits: []
-        settings:
-          multiRegionTrail: true
-          globalServiceEvents: true
-          managementEvents: true
-          s3DataEvents: true
-          lambdaDataEvents: true
-          sendToCloudWatchLogs: true
-          apiErrorRateInsight: false
-          apiCallRateInsight: false
+      apiCallRateInsight: false
   sessionManager:
-    sendToCloudWatchLogs: true
-    sendToS3: true
-    lifecycleRules:
-      - enabled: true
-        abortIncompleteMultipartUpload: 7
-        expiration: 730
-        noncurrentVersionExpiration: 730
-    attachPolicyToIamRoles:
-      - EC2-Default-SSM-AD-Role
-      - RDGW-Role
-      - Rsyslog-Role
-    excludeRegions: [{{OtherEnabledRegions}}]
-    excludeAccounts:
-      - Management
-      - LogArchive
-      - Audit
-  cloudwatchLogs:
-    dynamicPartitioning: dynamic-partitioning/log-filters.json
-    subscription:
-      type: ACCOUNT
-      selectionCriteria: 'LogGroupName NOT IN ["/aws/lambda/{{AcceleratorPrefix}}-FirehoseRecordsProcessor", "aws-accelerator-cloudtrail-logs", "aws-controltower/CloudTrailLogs"]'
-      overrideExisting: true
-    encryption:
-      useCMK: true
-      deploymentTargets:
-        organizationalUnits:
-          - Security
-          - Infrastructure
-          - Central
-          - Dev
-          - Test
-          - Prod
-          - UnClass
-          - Sandbox
-        accounts:
-          - Management
-        excludedRegions: [{{OtherEnabledRegions}}]
+    sendToCloudWatchLogs: false
+    sendToS3: false
   accessLogBucket:
     lifecycleRules:
       - enabled: true
         abortIncompleteMultipartUpload: 7
-        expiration: 730
-        noncurrentVersionExpiration: 730
+        expiration: 30
+        noncurrentVersionExpiration: 30
   centralLogBucket:
     lifecycleRules:
       - enabled: true
         abortIncompleteMultipartUpload: 7
-        expiration: 730
-        noncurrentVersionExpiration: 730
-  elbLogBucket:
-    lifecycleRules:
-      - enabled: true
-        abortIncompleteMultipartUpload: 7
-        expiration: 730
-        noncurrentVersionExpiration: 730
-s3:
-  encryption:
-    createCMK: true
-    deploymentTargets:
-      organizationalUnits:
-        - Security
-        - Infrastructure
-        - Central
-        - Dev
-        - Test
-        - Prod
-        - UnClass
-        - Sandbox
-      accounts:
-        - Management
-      excludedRegions: [{{OtherEnabledRegions}}]
-lambda:
-  encryption:
-    useCMK: true
-    deploymentTargets:
-      organizationalUnits:
-        - Security
-        - Infrastructure
-        - Central
-        - Dev
-        - Test
-        - Prod
-        - UnClass
-        - Sandbox
-      accounts:
-        - Management
-      excludedRegions: [{{OtherEnabledRegions}}]
-sqs:
-  encryption:
-    useCMK: true
-    deploymentTargets:
-      organizationalUnits:
-        - Security
-        - Infrastructure
-        - Central
-        - Dev
-        - Test
-        - Prod
-        - UnClass
-        - Sandbox
-      accounts:
-        - Management
-      excludedRegions: [{{OtherEnabledRegions}}]
-ssmInventory:
-  enable: true
-  deploymentTargets:
-    organizationalUnits:
-      - Infrastructure
-      - Security
-      - Central
-      - Dev
-      - Test
-      - Prod
-      - UnClass
-      - Sandbox
-reports:
-  costAndUsageReport:
-    compression: Parquet
-    format: Parquet
-    reportName: Cost-and-Usage-Report
-    s3Prefix: cur
-    timeUnit: HOURLY
-    refreshClosedReports: true
-    reportVersioning: OVERWRITE_REPORT
-    additionalArtifacts:
-      - ATHENA
-    additionalSchemaElements:
-      - RESOURCES
-    lifecycleRules:
-      - enabled: true
-        abortIncompleteMultipartUpload: 7
-        expiration: 730
-        noncurrentVersionExpiration: 730
-  budgets:
-    - deploymentTargets:
-        accounts:
-          - Network
-      name: accel-budget
-      timeUnit: MONTHLY
-      type: COST
-      amount: 2000
-      includeUpfront: true
-      includeTax: true
-      includeSupport: true
-      includeSubscription: true
-      includeRecurring: true
-      includeOtherSubscription: true
-      includeDiscount: true
-      includeCredit: false
-      includeRefund: false
-      useBlended: false
-      useAmortized: false
-      unit: USD
-      notifications:
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 100
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 90
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 75
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 50
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-    - deploymentTargets:
-        accounts:
-          - Perimeter
-      name: accel-budget
-      timeUnit: MONTHLY
-      type: COST
-      amount: 2000
-      includeUpfront: true
-      includeTax: true
-      includeSupport: true
-      includeSubscription: true
-      includeRecurring: true
-      includeOtherSubscription: true
-      includeDiscount: true
-      includeCredit: false
-      includeRefund: false
-      useBlended: false
-      useAmortized: false
-      unit: USD
-      notifications:
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 100
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 90
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 80
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 75
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 50
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-    - deploymentTargets:
-        accounts:
-          - Management
-      name: accel-budget
-      timeUnit: MONTHLY
-      type: COST
-      amount: 10000
-      includeUpfront: true
-      includeTax: true
-      includeSupport: true
-      includeSubscription: true
-      includeRecurring: true
-      includeOtherSubscription: true
-      includeDiscount: true
-      includeCredit: false
-      includeRefund: false
-      useBlended: false
-      useAmortized: false
-      unit: USD
-      notifications:
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 100
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 90
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 80
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 75
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 50
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-    - deploymentTargets:
-        organizationalUnits:
-          - Security
-          - Infrastructure
-          - Central
-          - Dev
-          - Test
-          - Prod
-          - UnClass
-          - Sandbox
-      name: default-accel-budget
-      timeUnit: MONTHLY
-      type: COST
-      amount: 1000
-      includeUpfront: true
-      includeTax: true
-      includeSupport: true
-      includeSubscription: true
-      includeRecurring: true
-      includeOtherSubscription: true
-      includeDiscount: true
-      includeCredit: false
-      includeRefund: false
-      useBlended: false
-      useAmortized: false
-      unit: USD
-      notifications:
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 100
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 90
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 80
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 75
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-        - type: ACTUAL
-          thresholdType: PERCENTAGE
-          threshold: 50
-          comparisonOperator: GREATER_THAN
-          subscriptionType: EMAIL
-          address: "{{ BudgetEmail }}"
-limits:
-  - serviceCode: vpc
-    quotaCode: L-29B6F2EB
-    desiredValue: 90
-    deploymentTargets:
-      accounts:
-        - Network
-  - serviceCode: vpc
-    quotaCode: L-F678F1CE
-    desiredValue: 15
-    deploymentTargets:
-      accounts:
-        - Network
-  - serviceCode: ec2
-    quotaCode: L-0263D0A3
-    desiredValue: 5
-    deploymentTargets:
-      accounts:
-        - Perimeter
+        expiration: 30
+        noncurrentVersionExpiration: 30
