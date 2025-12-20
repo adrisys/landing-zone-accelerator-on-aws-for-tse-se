@@ -128,20 +128,9 @@ Total time: ~45-60 minutes
 
 **Cause:** Default Lambda quota too low for LZA
 
-**Fix:** Request quota increase (see Current Status)
-
-## Current Status: PENDING
-
-### Blocker: Lambda Concurrency Quota
+**Fix:** Request quota increase:
 
 ```bash
-# Check current quota
-aws service-quotas get-service-quota \
-  --service-code lambda \
-  --quota-code L-B99A9384 \
-  --region eu-west-1
-
-# Request increase to 1000
 aws service-quotas request-service-quota-increase \
   --service-code lambda \
   --quota-code L-B99A9384 \
@@ -149,21 +138,109 @@ aws service-quotas request-service-quota-increase \
   --region eu-west-1
 ```
 
-### After Quota Approved
+### Issue 3: Account Name Not Found for Undefined
+
+**Error:** `Account Name not found for undefined. Validate that the emails in the parameter ManagementAccountEmail of the AWSAccelerator-InstallerStack and account configs (accounts-config.yaml) match the correct account emails shown in AWS Organizations.`
+
+**Cause:** This is a chicken-and-egg bug in LZA v1.13+. The bootstrap stage tries to look up account IDs for all mandatory accounts (Management, LogArchive, Audit) by querying AWS Organizations. On a fresh deployment, only the Management account exists - LogArchive and Audit haven't been created yet. When the code can't find an account, it returns `undefined`.
+
+**Root Cause in Code:** The error message in `accounts-config.ts` has a bug - it prints the undefined `accountId` variable instead of the account `name`:
+
+```typescript
+// Bug: prints "undefined"
+throw new Error(`Account Name not found for ${accountId}...`)
+// Should be:
+throw new Error(`Account Name not found for ${name}...`)
+```
+
+**Fix:** Manually create the LogArchive and Audit accounts before running the pipeline:
 
 ```bash
+# Create LogArchive account
+aws organizations create-account \
+  --email "YOUR_LOG_ARCHIVE_EMAIL" \
+  --account-name "LogArchive" \
+  --iam-user-access-to-billing ALLOW
+
+# Create Audit account
+aws organizations create-account \
+  --email "YOUR_AUDIT_EMAIL" \
+  --account-name "Audit" \
+  --iam-user-access-to-billing ALLOW
+
+# Check creation status (wait for SUCCEEDED)
+aws organizations describe-create-account-status \
+  --create-account-request-id <REQUEST_ID_FROM_ABOVE>
+
+# Get the Security OU ID
+aws organizations list-organizational-units-for-parent --parent-id <ROOT_ID>
+
+# Move accounts to Security OU
+aws organizations move-account \
+  --account-id <LOG_ARCHIVE_ACCOUNT_ID> \
+  --source-parent-id <ROOT_ID> \
+  --destination-parent-id <SECURITY_OU_ID>
+
+aws organizations move-account \
+  --account-id <AUDIT_ACCOUNT_ID> \
+  --source-parent-id <ROOT_ID> \
+  --destination-parent-id <SECURITY_OU_ID>
+
+# Then re-run the pipeline
 aws codepipeline start-pipeline-execution \
   --name AWSAccelerator-Pipeline \
   --region eu-west-1
 ```
 
+**Note:** This issue is related to [GitHub Issue #944](https://github.com/awslabs/landing-zone-accelerator-on-aws/issues/944).
+
+### Issue 4: Lambda Concurrency Insufficient in Child Accounts
+
+**Error:**
+
+```text
+Lambda concurrency limit for account 545586473833 in region eu-west-1 is insufficient
+Lambda concurrency limit for account 511949651909 in region eu-west-1 is insufficient
+```
+
+**Cause:** After creating the LogArchive and Audit accounts, they have the default Lambda concurrency quota (10), which is insufficient for LZA deployment. The quota increase from Issue 2 only applied to the Management account.
+
+**Fix:** Request Lambda quota increase in each child account. However, cross-account access is tricky:
+
+**Problem:** The `OrganizationAccountAccessRole` created in new accounts only trusts the management account root principal. IAM users cannot assume this role directly, even with `AdministratorAccess`.
+
+**Solution:** Use root user password reset to access child accounts:
+
+1. Go to <https://signin.aws.amazon.com/>
+2. Select **Root user**
+3. Enter the child account email (e.g., `your+log@email.com`)
+4. Click **Forgot password?**
+5. Complete password reset via email
+6. Log in as root user
+7. Go to **Service Quotas** → **AWS Lambda** → **Concurrent executions**
+8. Request increase to **1000**
+9. Repeat for each child account (LogArchive, Audit)
+
+**Alternative (if you have AWS SSO/IAM Identity Center):**
+- Go to AWS Organizations Console → AWS accounts
+- Click on the account → **Access account**
+- Request quota from there
+
+**Note:** Quota increases may take a few minutes to be approved. If the pipeline fails again, wait and retry.
+
+## Current Status: IN PROGRESS
+
+Pipeline running after creating mandatory accounts manually.
+
 ## Next Steps
 
-1. Wait for Lambda quota increase
-2. Re-run pipeline
-3. Approve when email arrives
-4. Upload custom config to S3
-5. Run pipeline again with our config
+1. ~~Wait for Lambda quota increase~~ ✅ Done
+2. ~~Create LogArchive and Audit accounts manually~~ ✅ Done
+3. ~~Re-run pipeline~~ ✅ Done
+4. Wait for pipeline to complete
+5. Approve when email arrives
+6. Upload custom config to S3
+7. Run pipeline again with our config
 
 ## Useful Commands
 
@@ -177,4 +254,3 @@ aws organizations list-accounts
 # Check quota request status
 aws service-quotas list-requested-service-quota-change-history --service-code lambda --region eu-west-1
 ```
-
