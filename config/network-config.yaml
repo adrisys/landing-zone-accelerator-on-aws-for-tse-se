@@ -9,6 +9,9 @@ defaultVpc:
   delete: true
   excludeAccounts: []
 
+# Required: endpoint policies (empty for cheap-mode)
+endpointPolicies: []
+
 # No Transit Gateway (saves ~$36/month per attachment + data transfer)
 transitGateways: []
 

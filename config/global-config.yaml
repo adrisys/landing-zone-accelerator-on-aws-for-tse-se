@@ -5,7 +5,8 @@
 homeRegion: "{{ AcceleratorHomeRegion }}"
 enabledRegions:
   - "{{ AcceleratorHomeRegion }}"
-  - eu-south-2
+# NOTE: eu-south-2 removed because it's an opt-in region not enabled in child accounts
+# To add: Enable region in each account first, then add here
 # Using OrganizationAccountAccessRole since we're NOT using Control Tower
 managementAccountAccessRole: OrganizationAccountAccessRole
 tags:
@@ -17,6 +18,8 @@ terminationProtection: false
 cdkOptions:
   centralizeBuckets: true
   useManagementAccessRole: true
+# Required: Cannot disable after enabling
+useV2Stacks: true
 # Control Tower is disabled
 controlTower:
   enable: false

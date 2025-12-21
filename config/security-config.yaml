@@ -60,6 +60,12 @@ centralSecurityServices:
     regionAggregation: false
     excludeRegions: []
     standards: []
+
+  # Required: SSM Automation (minimal config)
+  ssmAutomation:
+    excludeRegions: []
+    documentSets: []
+
 # Disable access analyzer (optional, can enable later)
 accessAnalyzer:
   enable: false
@@ -80,8 +86,8 @@ iamPasswordPolicy:
 awsConfig:
   enableConfigurationRecorder: true
   enableDeliveryChannel: true
-  # No aggregation (not using Control Tower)
-  # No ruleSets (saves Lambda + Config rule costs)
+  # Required: must be empty array, not undefined
+  ruleSets: []
 # No CloudWatch metrics/alarms (saves costs, add later if needed)
 cloudWatch:
   metricSets: []

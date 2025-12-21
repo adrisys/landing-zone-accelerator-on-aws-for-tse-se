@@ -5,20 +5,19 @@
 mandatoryAccounts:
   - name: Management
     description: The management (primary) account
-    email: adri@adrilab.com # <----- UPDATE EMAIL ADDRESS
+    email: adri@adrilab.com 
     organizationalUnit: Root
   - name: LogArchive
     description: The log archive account for centralized logging
-    email: adrilab.mail+log@gmail.com # <----- UPDATE EMAIL ADDRESS
+    email: adrilab.mail+log@gmail.com 
     organizationalUnit: Security
   - name: Audit
     description: The security tooling/audit account
-    email: adrilab.mail+security@gmail.com # <----- UPDATE EMAIL ADDRESS
+    email: adrilab.mail+security@gmail.com 
     organizationalUnit: Security
-# No workload accounts initially - add them in subsequent runs after LZA converges
-workloadAccounts: []
-# OPTIONAL: Uncomment and add workload accounts after initial deployment succeeds
-#  - name: SharedServices
-#    description: Shared services account
-#    email: <shared-services>@example.com
-#    organizationalUnit: Infrastructure
+# Workload accounts
+workloadAccounts:
+  - name: Participants
+    description: Account for workshop participants
+    email: adrilab.mail+participants@gmail.com
+    organizationalUnit: Workloads

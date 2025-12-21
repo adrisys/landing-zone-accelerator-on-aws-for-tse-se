@@ -1,17 +1,8 @@
+######################################################################
+# CHEAP-MODE CUSTOMIZATIONS - Empty configuration
+# No custom CloudFormation stacks in baseline
+# Add customizations after initial LZA deployment succeeds
+######################################################################
+
 customizations:
-  cloudFormationStacks:
-    - name: AWSAccelerator-AlbIPForwardingStack
-      description: ALB Lambda Forwarder
-      runOrder: 10
-      template: customizations/AlbIpForwardingStack.template.json
-      terminationProtection: true
-      parameters:
-        - name: acceleratorPrefix
-          value: AWSAccelerator
-        - name: vpcName
-          value: Perimeter
-      deploymentTargets:
-        accounts:
-          - Perimeter
-      regions:
-        - {{AcceleratorHomeRegion}}
+  cloudFormationStacks: []

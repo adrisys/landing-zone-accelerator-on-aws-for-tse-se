@@ -228,19 +228,202 @@ Lambda concurrency limit for account 511949651909 in region eu-west-1 is insuffi
 
 **Note:** Quota increases may take a few minutes to be approved. If the pipeline fails again, wait and retry.
 
+## Recommendation: Use Control Tower + LZA
+
+For new deployments, consider using **AWS Control Tower with LZA** instead of standalone LZA.
+
+### Why Control Tower + LZA?
+
+| Standalone LZA | Control Tower + LZA |
+|----------------|---------------------|
+| You manage everything | AWS manages base landing zone |
+| Lambda quota issues in new accounts | Control Tower handles account provisioning |
+| Manual guardrails setup | AWS-managed guardrails included |
+| More flexibility | Better AWS support |
+| Complex troubleshooting | Fewer edge cases |
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  Control Tower                       │
+│  - Account Factory (creates accounts)               │
+│  - Managed guardrails                               │
+│  - Landing zone baseline                            │
+├─────────────────────────────────────────────────────┤
+│                      LZA                            │
+│  - Additional customizations                        │
+│  - Advanced networking (TGW, VPCs)                  │
+│  - Security hardening beyond CT guardrails          │
+│  - Custom SCPs, Config rules                        │
+└─────────────────────────────────────────────────────┘
+```
+
+### Configuration Change
+
+To use Control Tower with LZA, set in `global-config.yaml`:
+
+```yaml
+controlTower:
+  enable: true
+```
+
+### When to Use What
+
+| Scenario | Recommendation |
+|----------|----------------|
+| Fresh start, enterprise | Control Tower + LZA |
+| Fresh start, learning/PoC | Standalone LZA (this tutorial) |
+| Already have Control Tower | Add LZA on top |
+| Need maximum flexibility | Standalone LZA |
+| Want AWS support | Control Tower + LZA |
+
+**Note:** Migrating from standalone LZA to Control Tower is complex. Choose your approach before deploying.
+
+---
+
+## Issue 5: Lambda Quota Automation for New Accounts
+
+**Problem:** Every new account needs Lambda concurrency quota increased to 1000, which doesn't scale.
+
+**Solution:** Use AWS Service Quotas Request Template to automatically request quota increases for all new accounts:
+
+```bash
+# Enable quota template (must run from us-east-1)
+aws service-quotas associate-service-quota-template --region us-east-1
+
+# Add Lambda quota to template
+aws service-quotas put-service-quota-increase-request-into-template \
+  --service-code lambda \
+  --quota-code L-B99A9384 \
+  --desired-value 1000 \
+  --aws-region eu-west-1 \
+  --region us-east-1
+
+# Verify
+aws service-quotas list-service-quota-increase-requests-in-template --region us-east-1
+```
+
+Now all new accounts created in your organization will automatically get a Lambda quota increase request.
+
+**Note:** Quota requests are still subject to AWS approval, but reasonable values (like 1000) are typically auto-approved.
+
+---
+
+## IAM Identity Center (SSO)
+
+### Why Identity Center?
+
+The standard for LZA/enterprise environments is **no IAM users** - use Identity Center for all human access:
+
+| IAM Users | Identity Center |
+|-----------|-----------------|
+| Long-term credentials (password) | Temporary credentials (session) |
+| MFA optional per user | MFA enforced centrally |
+| Manage in each account | Manage in one place |
+| Access keys can leak | No access keys |
+
+### Identity Source Options
+
+| Option | Cost | Best For |
+|--------|------|----------|
+| **Built-in directory** | Free | Small teams, PoC |
+| Managed AD | ~$100+/month | Enterprise with AD |
+| External IdP (Okta, Azure AD) | Varies | Existing SSO |
+
+### Setup Steps
+
+#### Step 1: Enable Identity Center (Manual - Before Pipeline)
+
+LZA cannot enable Identity Center - you must do it manually:
+
+1. AWS Console → **IAM Identity Center**
+2. Click **Enable**
+3. Choose **"Enable with AWS Organizations"**
+
+#### Step 2: Configure in iam-config.yaml
+
+```yaml
+identityCenter:
+  name: IdentityCenter
+  delegatedAdminAccount: Audit  # Manages Identity Center
+  identityCenterPermissionSets:
+    - name: AdministratorAccess
+      policies:
+        awsManaged:
+          - arn:aws:iam::aws:policy/AdministratorAccess
+      sessionDuration: 60
+    - name: ReadOnlyAccess
+      policies:
+        awsManaged:
+          - arn:aws:iam::aws:policy/ReadOnlyAccess
+      sessionDuration: 60
+    - name: PowerUserAccess
+      policies:
+        awsManaged:
+          - arn:aws:iam::aws:policy/PowerUserAccess
+      sessionDuration: 60
+  identityCenterAssignments: []  # Configure manually in console
+```
+
+#### Step 3: Run Pipeline
+
+Deploy the config - LZA will:
+- Delegate Identity Center administration to Audit account
+- Create the permission sets
+
+#### Step 4: Create Users and Assignments (Post-Deployment)
+
+1. Log into **Audit account** (delegated admin)
+2. Go to **IAM Identity Center**
+3. **Users** → Create user (e.g., `adri@example.com`)
+4. **Groups** → Create group (e.g., `Admins`)
+5. Add user to group
+6. **AWS accounts** → Select all accounts → Assign access
+7. Choose group → Choose permission set (AdministratorAccess)
+
+#### Step 5: Login via SSO Portal
+
+Access your SSO portal at:
+```
+https://d-xxxxxxxxxx.awsapps.com/start
+```
+
+Select account → Select role → Access console or get CLI credentials.
+
+### CLI Access with Identity Center
+
+```bash
+# Configure SSO profile
+aws configure sso
+# SSO session name: my-sso
+# SSO start URL: https://d-xxxxxxxxxx.awsapps.com/start
+# SSO region: eu-west-1
+# Choose account and role
+
+# Use the profile
+aws s3 ls --profile my-sso
+
+# Or set as default
+export AWS_PROFILE=my-sso
+```
+
+---
+
 ## Current Status: IN PROGRESS
 
-Pipeline running after creating mandatory accounts manually.
+Pipeline running with Identity Center configuration.
 
 ## Next Steps
 
 1. ~~Wait for Lambda quota increase~~ ✅ Done
 2. ~~Create LogArchive and Audit accounts manually~~ ✅ Done
 3. ~~Re-run pipeline~~ ✅ Done
-4. Wait for pipeline to complete
-5. Approve when email arrives
-6. Upload custom config to S3
-7. Run pipeline again with our config
+4. ~~Set up Lambda quota template for new accounts~~ ✅ Done
+5. ~~Enable Identity Center manually~~ ✅ Done
+6. Wait for pipeline to complete
+7. Create users/groups in Identity Center
+8. Assign access to accounts
 
 ## Useful Commands
 
@@ -253,4 +436,7 @@ aws organizations list-accounts
 
 # Check quota request status
 aws service-quotas list-requested-service-quota-change-history --service-code lambda --region eu-west-1
+
+# List Identity Center instances
+aws sso-admin list-instances --region eu-west-1
 ```

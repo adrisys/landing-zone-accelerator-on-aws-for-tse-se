@@ -1,18 +1,47 @@
 ######################################################################
-# CHEAP-MODE IAM - Empty configuration
-# No Identity Center, no Managed AD, no custom roles/policies
-# Add these after initial LZA deployment succeeds
+# IAM Configuration with Identity Center (SSO)
+# NOTE: You must manually enable Identity Center in the Management
+#       account BEFORE running the pipeline. LZA will then manage
+#       the delegation and permission sets.
+#
+# Steps:
+#   1. AWS Console → IAM Identity Center → Enable
+#   2. Choose "Enable with AWS Organizations"
+#   3. Run the LZA pipeline
 ######################################################################
 homeRegion: "{{ AcceleratorHomeRegion }}"
 
-# No Identity Center delegation (expensive and complex)
-# identityCenter: undefined
+# Identity Center configuration (free - uses built-in directory)
+identityCenter:
+  name: IdentityCenter
+  # Delegate administration to Audit account
+  delegatedAdminAccount: Audit
+  # Permission sets define what roles users can assume
+  identityCenterPermissionSets:
+    - name: AdministratorAccess
+      policies:
+        awsManaged:
+          - arn:aws:iam::aws:policy/AdministratorAccess
+      sessionDuration: 60
+    - name: ReadOnlyAccess
+      policies:
+        awsManaged:
+          - arn:aws:iam::aws:policy/ReadOnlyAccess
+      sessionDuration: 60
+    - name: PowerUserAccess
+      policies:
+        awsManaged:
+          - arn:aws:iam::aws:policy/PowerUserAccess
+      sessionDuration: 60
+  # Assignments are configured manually in Identity Center console
+  # after you create users/groups in the built-in directory
+  identityCenterAssignments: []
 
-# Empty sets - this is valid and cheapest
+# Empty - no custom policies/roles needed with Identity Center
 policySets: []
 roleSets: []
 groupSets: []
 userSets: []
 
-# No Managed Active Directory (very expensive ~$100+/month)
-# managedActiveDirectories: []
+# No Managed Active Directory (expensive ~$100+/month)
+# Use Identity Center's built-in directory instead (free)
