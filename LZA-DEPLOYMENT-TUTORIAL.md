@@ -561,6 +561,95 @@ Separation of duties:
 
 ---
 
+## Network Account vs Shared Services Account
+
+These are different accounts with different purposes. Even if the same team manages both, keep them separate for better audit trails and blast radius reduction.
+
+### Network Account
+
+**Purpose:** Connectivity infrastructure - the "roads and pipes" of your environment
+
+| Resource | What it does |
+|----------|--------------|
+| **Transit Gateway** | Central hub connecting all VPCs across accounts |
+| **VPN / Direct Connect** | Connection to on-prem / NATO networks |
+| **Route 53 Resolver** | Centralized DNS for all accounts |
+| **Route 53 Private Hosted Zones** | Internal DNS (e.g., `*.internal.nato`) |
+| **IPAM** | IP address management (prevents CIDR conflicts) |
+| **VPC Endpoints (shared)** | Private access to AWS services (S3, SSM, etc.) |
+| **Network Firewall** | (Or in Perimeter account) Traffic inspection |
+
+### Shared Services Account
+
+**Purpose:** Common applications/tools that multiple accounts use
+
+| Resource | What it does |
+|----------|--------------|
+| **Active Directory** | User authentication (if using AD) |
+| **CI/CD Pipelines** | Jenkins, GitLab, CodePipeline for deployments |
+| **Container Registry** | ECR or private registry for Docker images |
+| **Artifact Repository** | Artifactory, Nexus (packages, binaries) |
+| **Bastion Hosts** | Jump servers for SSH access (if needed) |
+| **Monitoring Tools** | Grafana, Prometheus dashboards |
+| **Secrets Manager** | Shared secrets across accounts |
+| **Service Catalog** | Pre-approved infrastructure templates |
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Network Account                              │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────┐ │
+│  │   Transit   │  │     VPN      │  │    Route 53 Resolver    │ │
+│  │   Gateway   │◄─┤  to NATO     │  │    (DNS for all)        │ │
+│  └──────┬──────┘  └──────────────┘  └─────────────────────────┘ │
+│         │                                                        │
+└─────────┼────────────────────────────────────────────────────────┘
+          │
+          │ (VPC attachments)
+          │
+┌─────────┼────────────────────────────────────────────────────────┐
+│         ▼           Shared Services Account                      │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────┐ │
+│  │   CI/CD     │  │   Container  │  │   Active Directory      │ │
+│  │  (GitLab)   │  │   Registry   │  │   (if needed)           │ │
+│  └─────────────┘  └──────────────┘  └─────────────────────────┘ │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+          │
+          │ (Used by)
+          ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                    Workload Accounts                             │
+│   Participant1        Participant2        Participant3           │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### For NATO Minimal Setup
+
+Start small, add more as needs grow:
+
+| Network Account | Shared Services Account |
+|-----------------|------------------------|
+| Transit Gateway | CI/CD pipeline (optional) |
+| VPN to NATO (if needed) | Container registry (if using containers) |
+| Route 53 Resolver | — |
+
+### Same Team, Separate Accounts?
+
+Even if the same team manages both accounts, keep them separate:
+
+| Reason | Why it matters for NATO |
+|--------|------------------------|
+| **Audit trail** | Clear logs showing who accessed what |
+| **Blast radius** | Compromise of one doesn't affect the other |
+| **Compliance** | Easier to demonstrate separation of duties |
+| **Future-proofing** | If teams split later, no migration needed |
+
+**Cost:** Separate accounts add ~$4-6/month (Config in extra account). Worth it for NATO-grade security.
+
+---
+
 ## Best Practice Architecture (Government/NATO Grade)
 
 We want to do it the right way from the start, so it's ready for sensitive workloads.
