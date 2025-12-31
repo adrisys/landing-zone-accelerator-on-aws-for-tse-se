@@ -796,12 +796,249 @@ Note: Costs vary based on usage, data transfer, and number of accounts.
 
 ---
 
-## Current Accounts
+## Control Tower + LZA Deployment (Recommended)
 
-| Name | Account ID | Email |
-|------|------------|-------|
-| adrilab (Management) | 509624333612 | adri@adrilab.com |
-| LogArchive | 545586473833 | adrilab.mail+log@gmail.com |
-| Audit | 511949651909 | adrilab.mail+security@gmail.com |
-| Participants | 231222198517 | adrilab.mail+participants@gmail.com |
+This section documents deploying AWS Control Tower first, then LZA on top of it.
+
+### Why Control Tower + LZA?
+
+| Aspect | Standalone LZA | Control Tower + LZA |
+|--------|----------------|---------------------|
+| Account creation | LZA creates accounts (can have issues) | Control Tower handles it cleanly |
+| Lambda quota issues | Must manually request in each account | Still manual (use quota template) |
+| Guardrails | Manual SCP setup | AWS-managed guardrails included |
+| AWS Support | "You built it" | Better support from AWS |
+| Troubleshooting | Complex | Fewer edge cases |
+| Cost | ~$0-2/mo (if Config disabled) | ~$6-10/mo (Config required) |
+
+### Prerequisites
+
+1. **Clean AWS Organization** - Only management account (or fresh organization)
+2. **Two unique email addresses** for LogArchive and Audit accounts
+3. **No existing OUs** named "Security" (Control Tower creates this)
+4. **IAM Identity Center** must NOT be enabled (Control Tower enables it)
+
+### Step 1: Enable Control Tower
+
+1. Go to **AWS Console** → **Control Tower**
+2. Click **Set up landing zone**
+3. Configure the following:
+
+| Setting | Value |
+|---------|-------|
+| Home Region | `eu-west-1` (or your preferred) |
+| Additional Regions | Select regions to govern (optional) |
+| Foundational OU | `Security` (default) |
+| Additional OU | `Sandbox` (optional) |
+| Log Archive email | `yourname+log2@gmail.com` |
+| Audit email | `yourname+security2@gmail.com` |
+| CloudTrail | Keep enabled (default) |
+| S3 log retention | Default is fine |
+| KMS encryption | Optional (adds cost) |
+
+4. Review and click **Set up landing zone**
+5. ☕ **Wait 45-60 minutes** for setup to complete
+
+### Step 2: Verify Control Tower Setup
+
+After completion, verify in AWS Organizations:
+
+```
+Root
+├── Security OU (created by Control Tower)
+│   ├── LogArchive (created by Control Tower)
+│   └── Audit (created by Control Tower)
+└── Sandbox OU (if you selected it)
+```
+
+Also verify:
+- **IAM Identity Center** is now enabled
+- **CloudTrail** organization trail is created
+- **AWS Config** is enabled in all accounts
+
+### Step 3: Request Lambda Quota Increase
+
+Control Tower doesn't automatically increase Lambda quota. Request it for all accounts:
+
+```bash
+# In Management account (run from us-east-1 for quota template)
+aws service-quotas associate-service-quota-template --region us-east-1
+
+aws service-quotas put-service-quota-increase-request-into-template \
+  --service-code lambda \
+  --quota-code L-B99A9384 \
+  --desired-value 1000 \
+  --aws-region eu-west-1 \
+  --region us-east-1
+
+# Verify
+aws service-quotas list-service-quota-increase-requests-in-template --region us-east-1
+```
+
+New accounts will auto-request quota increase. For existing accounts (LogArchive, Audit), request manually via console or reset password to access each account.
+
+### Step 4: Create GitHub Token Secret
+
+```bash
+aws secretsmanager create-secret \
+  --name accelerator/github-token \
+  --secret-string "ghp_YOUR_GITHUB_TOKEN" \
+  --region eu-west-1
+```
+
+### Step 5: Update LZA Configuration
+
+Update `config/global-config.yaml`:
+
+```yaml
+homeRegion: eu-west-1
+
+controlTower:
+  enable: true
+  controls: []
+
+logging:
+  account: LogArchive
+  cloudtrail:
+    enable: false  # Control Tower already created org trail
+    # ... rest of config
+```
+
+Update `config/accounts-config.yaml` to match Control Tower account emails:
+
+```yaml
+mandatoryAccounts:
+  - name: Management
+    email: your-management-email@example.com
+  - name: LogArchive
+    email: yourname+log2@gmail.com  # Must match Control Tower
+  - name: Audit
+    email: yourname+security2@gmail.com  # Must match Control Tower
+```
+
+### Step 6: Deploy LZA Installer Stack
+
+1. Go to **CloudFormation** → **Create Stack**
+2. Use S3 URL: `https://solutions-reference.s3.amazonaws.com/landing-zone-accelerator-on-aws/latest/AWSAccelerator-InstallerStack.template`
+3. Configure:
+
+| Parameter | Value |
+|-----------|-------|
+| Stack Name | `AWSAccelerator-InstallerStack` |
+| **Control Tower Environment** | **Yes** ← Important! |
+| Source Location | `github` |
+| Repository Owner | `awslabs` |
+| Repository Name | `landing-zone-accelerator-on-aws` |
+| Branch Name | `release/v1.14.1` |
+| Configuration Repository Location | `s3` |
+| Use Existing Config Repository | `No` |
+| Enable Approval Stage | `Yes` |
+
+4. Deploy and wait for pipeline
+
+### Step 7: Upload Configuration
+
+After the Installer stack creates the S3 config bucket:
+
+```bash
+# Find the config bucket
+aws s3 ls | grep accelerator-config
+
+# Upload your config files
+aws s3 sync ./config s3://aws-accelerator-config-ACCOUNT_ID-REGION/
+```
+
+### Step 8: Run the Pipeline
+
+1. Go to **CodePipeline** → **AWSAccelerator-Pipeline**
+2. Approve when prompted (if approval stage enabled)
+3. Wait for all stages to complete (~45-60 minutes)
+
+### Control Tower + LZA Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     CONTROL TOWER                           │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ - Account Factory (creates accounts)                    ││
+│  │ - Managed Guardrails (SCPs)                             ││
+│  │ - Landing Zone baseline                                 ││
+│  │ - IAM Identity Center                                   ││
+│  │ - CloudTrail org trail                                  ││
+│  │ - AWS Config (required)                                 ││
+│  └─────────────────────────────────────────────────────────┘│
+├─────────────────────────────────────────────────────────────┤
+│                          LZA                                │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ - Additional OUs (Infrastructure, Workloads)            ││
+│  │ - Custom SCPs                                           ││
+│  │ - Networking (TGW, VPCs, VPN)                           ││
+│  │ - Security services (GuardDuty, Security Hub, etc.)     ││
+│  │ - IAM roles and policies                                ││
+│  │ - Custom Config rules                                   ││
+│  └─────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+```
+
+### What Control Tower Manages vs LZA
+
+| Resource | Managed By |
+|----------|------------|
+| Security OU | Control Tower |
+| LogArchive account | Control Tower |
+| Audit account | Control Tower |
+| CloudTrail org trail | Control Tower |
+| AWS Config baseline | Control Tower |
+| IAM Identity Center instance | Control Tower |
+| Baseline guardrails | Control Tower |
+| Additional OUs | LZA |
+| Additional accounts | LZA (via Account Factory) |
+| Custom SCPs | LZA |
+| Networking | LZA |
+| Security services (GuardDuty, etc.) | LZA |
+| Permission sets | LZA |
+| Custom Config rules | LZA |
+
+### Troubleshooting Control Tower + LZA
+
+#### Issue: "Account email already exists"
+
+**Cause:** Email was used by a closed/suspended account.
+
+**Fix:** Use different email alias (e.g., `+log2` instead of `+log`).
+
+#### Issue: Control Tower setup fails
+
+**Cause:** Pre-existing resources conflict with Control Tower.
+
+**Fix:**
+- Delete any existing SCPs (except FullAWSAccess)
+- Delete any existing OUs named "Security" or "Sandbox"
+- Disable Identity Center if enabled
+- Remove any Config recorders/rules
+
+#### Issue: LZA pipeline fails with Control Tower enabled
+
+**Cause:** Config mismatch between Control Tower accounts and LZA config.
+
+**Fix:** Ensure `accounts-config.yaml` emails exactly match Control Tower account emails.
+
+### Cost Breakdown (Control Tower + LZA Minimal)
+
+| Service | Monthly Cost |
+|---------|-------------|
+| Control Tower | Free |
+| AWS Config (3 accounts) | ~$6-9 |
+| CloudTrail | Free (1 trail) |
+| S3 (logs) | ~$1-2 |
+| IAM Identity Center | Free |
+| **Total baseline** | **~$7-11/month** |
+
+Additional costs if you enable:
+| Service | Additional Cost |
+|---------|-----------------|
+| GuardDuty | ~$10-30/month |
+| Security Hub | ~$10-30/month |
+| Transit Gateway | ~$36/month + attachments |
+| NAT Gateway | ~$32/month per AZ |
 
