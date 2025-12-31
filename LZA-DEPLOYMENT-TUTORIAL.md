@@ -11,21 +11,21 @@ LZA is an AWS solution that automates the deployment of a secure, multi-account 
 | Component | Description |
 |-----------|-------------|
 | **LZA Source Code** | CDK application at `awslabs/landing-zone-accelerator-on-aws` |
-| **Your Config** | YAML files that define your AWS environment |
+| **Our Config** | YAML files that define our AWS environment |
 
-**You don't modify the LZA source code** - you only provide configuration files.
+**We don't modify the LZA source code** - we only provide configuration files.
 
 ## Architecture
 
 ```
-LZA Source Code (GitHub)          Your Config (S3)
+LZA Source Code (GitHub)          Our Config (S3)
 awslabs/landing-zone-accelerator  *.yaml files
-= The CDK "engine"                = Your instructions
+= The CDK "engine"                = Our instructions
          |                                |
          +----------- reads --------------+
                         |
                         v
-              Your AWS Environment
+              Our AWS Environment
               Accounts, OUs, IAM, CloudTrail...
 ```
 
@@ -213,7 +213,7 @@ Lambda concurrency limit for account 511949651909 in region eu-west-1 is insuffi
 
 1. Go to <https://signin.aws.amazon.com/>
 2. Select **Root user**
-3. Enter the child account email (e.g., `your+log@email.com`)
+3. Enter the child account email (e.g., `ourteam+log@email.com`)
 4. Click **Forgot password?**
 5. Complete password reset via email
 6. Log in as root user
@@ -221,7 +221,7 @@ Lambda concurrency limit for account 511949651909 in region eu-west-1 is insuffi
 8. Request increase to **1000**
 9. Repeat for each child account (LogArchive, Audit)
 
-**Alternative (if you have AWS SSO/IAM Identity Center):**
+**Alternative (if we have AWS SSO/IAM Identity Center):**
 - Go to AWS Organizations Console → AWS accounts
 - Click on the account → **Access account**
 - Request quota from there
@@ -236,7 +236,7 @@ For new deployments, consider using **AWS Control Tower with LZA** instead of st
 
 | Standalone LZA | Control Tower + LZA |
 |----------------|---------------------|
-| You manage everything | AWS manages base landing zone |
+| We manage everything | AWS manages base landing zone |
 | Lambda quota issues in new accounts | Control Tower handles account provisioning |
 | Manual guardrails setup | AWS-managed guardrails included |
 | More flexibility | Better AWS support |
@@ -273,12 +273,12 @@ controlTower:
 | Scenario | Recommendation |
 |----------|----------------|
 | Fresh start, enterprise | Control Tower + LZA |
-| Fresh start, learning/PoC | Standalone LZA (this tutorial) |
+| Fresh start, learning | Standalone LZA (this tutorial) |
 | Already have Control Tower | Add LZA on top |
 | Need maximum flexibility | Standalone LZA |
 | Want AWS support | Control Tower + LZA |
 
-**Note:** Migrating from standalone LZA to Control Tower is complex. Choose your approach before deploying.
+**Note:** Migrating from standalone LZA to Control Tower is complex. Choose the approach before deploying.
 
 ---
 
@@ -304,7 +304,7 @@ aws service-quotas put-service-quota-increase-request-into-template \
 aws service-quotas list-service-quota-increase-requests-in-template --region us-east-1
 ```
 
-Now all new accounts created in your organization will automatically get a Lambda quota increase request.
+Now all new accounts created in our organization will automatically get a Lambda quota increase request.
 
 **Note:** Quota requests are still subject to AWS approval, but reasonable values (like 1000) are typically auto-approved.
 
@@ -327,7 +327,7 @@ The standard for LZA/enterprise environments is **no IAM users** - use Identity 
 
 | Option | Cost | Best For |
 |--------|------|----------|
-| **Built-in directory** | Free | Small teams, PoC |
+| **Built-in directory** | Free | Small teams |
 | Managed AD | ~$100+/month | Enterprise with AD |
 | External IdP (Okta, Azure AD) | Varies | Existing SSO |
 
@@ -335,7 +335,7 @@ The standard for LZA/enterprise environments is **no IAM users** - use Identity 
 
 #### Step 1: Enable Identity Center (Manual - Before Pipeline)
 
-LZA cannot enable Identity Center - you must do it manually:
+LZA cannot enable Identity Center - we must do it manually:
 
 1. AWS Console → **IAM Identity Center**
 2. Click **Enable**
@@ -384,7 +384,7 @@ Deploy the config - LZA will:
 
 #### Step 5: Login via SSO Portal
 
-Access your SSO portal at:
+Access the SSO portal at:
 ```
 https://d-xxxxxxxxxx.awsapps.com/start
 ```
@@ -410,33 +410,398 @@ export AWS_PROFILE=my-sso
 
 ---
 
-## Current Status: IN PROGRESS
+## Account Strategy: Single vs Per-Participant
 
-Pipeline running with Identity Center configuration.
+For workshops with multiple participants:
 
-## Next Steps
+| Factor | Single Shared Account | Account Per Participant ✅ |
+|--------|----------------------|---------------------------|
+| **Security** | Users see each other's resources | Full isolation |
+| **Experiments** | Can interfere with each other | Clean sandbox per person |
+| **Cost tracking** | Hard to attribute | Per-participant billing |
+| **Cleanup** | Complex (whose resources?) | Nuke entire account |
+| **Compliance** | Harder to audit | Clear audit trail |
 
-1. ~~Wait for Lambda quota increase~~ ✅ Done
-2. ~~Create LogArchive and Audit accounts manually~~ ✅ Done
-3. ~~Re-run pipeline~~ ✅ Done
-4. ~~Set up Lambda quota template for new accounts~~ ✅ Done
-5. ~~Enable Identity Center manually~~ ✅ Done
-6. Wait for pipeline to complete
-7. Create users/groups in Identity Center
-8. Assign access to accounts
+**Recommendation:** For NATO/government, use account per participant for proper isolation.
 
-## Useful Commands
+---
 
-```bash
-# Check pipeline status
-aws codepipeline get-pipeline-state --name AWSAccelerator-Pipeline --region eu-west-1
+## Networking: Centralized vs Decentralized
 
-# List created accounts
-aws organizations list-accounts
+### When to Use Centralized Networking (Hub & Spoke)
 
-# Check quota request status
-aws service-quotas list-requested-service-quota-change-history --service-code lambda --region eu-west-1
+| Scenario | Why Centralized? |
+|----------|------------------|
+| On-premises connectivity | One VPN/Direct Connect shared by all accounts |
+| Centralized egress | Control all internet traffic through one firewall |
+| Shared services | DNS, Active Directory, CI/CD accessible to all |
+| Network inspection | All traffic flows through security appliances |
+| Compliance | All traffic logged/inspected in one place |
 
-# List Identity Center instances
-aws sso-admin list-instances --region eu-west-1
+### Decentralized (Isolated Accounts)
+
 ```
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ Participant1 │  │ Participant2 │  │ Participant3 │
+│  ┌───────┐   │  │  ┌───────┐   │  │  ┌───────┐   │
+│  │  VPC  │   │  │  │  VPC  │   │  │  │  VPC  │   │
+│  └───────┘   │  │  └───────┘   │  │  └───────┘   │
+└──────────────┘  └──────────────┘  └──────────────┘
+       │                 │                 │
+       ✗ No connection between accounts ✗
+```
+
+- Each account = isolated island
+- Each participant creates own VPC if needed
+- No Transit Gateway cost (~$36/attachment/month)
+- No shared NAT Gateway cost
+
+### Centralized (Hub & Spoke)
+
+```
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ Participant1 │  │ Participant2 │  │ Participant3 │
+│  ┌───────┐   │  │  ┌───────┐   │  │  ┌───────┐   │
+│  │  VPC  │   │  │  │  VPC  │   │  │  │  VPC  │   │
+│  └───┬───┘   │  │  └───┬───┘   │  │  └───┬───┘   │
+└──────┼───────┘  └──────┼───────┘  └──────┼───────┘
+       │                 │                 │
+       └────────────┬────┴─────────────────┘
+                    │
+           ┌────────┴────────┐
+           │ Transit Gateway │  (Network Account)
+           └────────┬────────┘
+                    │
+           ┌────────┴────────┐
+           │   Perimeter     │
+           │  ┌──────────┐   │
+           │  │ Firewall │───┼──► Internet
+           │  └──────────┘   │
+           └─────────────────┘
+                    │
+              On-Premises (VPN)
+```
+
+### Decision Matrix
+
+| If we need... | Centralized? |
+|----------------|--------------|
+| Participants to talk to each other | ✅ Yes |
+| Shared database/service all use | ✅ Yes |
+| VPN to on-prem network | ✅ Yes |
+| Inspect all traffic for compliance | ✅ Yes |
+| Just isolated experiments | ❌ No |
+| Participants work independently | ❌ No |
+
+### Cost Comparison
+
+| Setup | Monthly Cost |
+|-------|-------------|
+| Decentralized (5 accounts, each with NAT) | 5 × $32 = ~$160 |
+| Centralized (TGW + 5 attachments + NAT pair) | ~$250 |
+| Decentralized (no NAT, public subnets only) | **$0** |
+
+---
+
+## Infrastructure OU: Network & Perimeter Accounts
+
+If we use hub & spoke, Infrastructure OU holds the networking accounts:
+
+```
+                            Root
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                     │                     │
+        ▼                     ▼                     ▼
+   ┌─────────┐          ┌─────────────┐        ┌──────────┐
+   │Security │          │Infrastructure│       │Workloads │
+   │   OU    │          │     OU       │       │    OU    │
+   └────┬────┘          └──────┬───────┘       └────┬─────┘
+        │                      │                    │
+   ┌────┴────┐         ┌───────┴───────┐      ┌────┴────────┐
+   │         │         │               │      │             │
+   Log    Audit    Network       Perimeter    Participant
+   Archive                                     Accounts
+```
+
+### What Lives Where
+
+| Account | Contains | Purpose |
+|---------|----------|---------|
+| **Network** | Transit Gateway, VPN/Direct Connect, DNS | Core connectivity |
+| **Perimeter** | Firewall, NAT Gateway, IDS/IPS | Security inspection |
+| **Participant** | Their VPC (connected to TGW) | Workloads |
+
+### Why Separate Network & Perimeter?
+
+```
+Separation of duties:
+- Network team → Network account (connectivity)
+- Security team → Perimeter account (inspection/filtering)
+```
+
+### Alternative: Combined (Simpler)
+
+```
+┌─────────────────────────────────────────┐
+│            Network Account              │
+│                                         │
+│  ┌─────────────┐    ┌─────────────────┐ │
+│  │     TGW     │    │  Perimeter VPC  │ │
+│  │    VPN/DX   │◄──►│  - Firewall     │ │
+│  │             │    │  - NAT          │ │
+│  └─────────────┘    └─────────────────┘ │
+└─────────────────────────────────────────┘
+```
+
+| Option | Accounts | Best For |
+|--------|----------|----------|
+| **Separate** | Network + Perimeter | Enterprise/Production |
+| **Combined** | Network only | Smaller deployments |
+
+---
+
+## Best Practice Architecture (Government/NATO Grade)
+
+We want to do it the right way from the start, so it's ready for sensitive workloads.
+
+### Complete Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                   ROOT                                      │
+│                                     │                                       │
+│         ┌───────────────────────────┼───────────────────────────┐           │
+│         │                           │                           │           │
+│         ▼                           ▼                           ▼           │
+│    ┌─────────┐              ┌──────────────┐             ┌──────────┐       │
+│    │Security │              │Infrastructure│             │ Workloads│       │
+│    │   OU    │              │      OU      │             │    OU    │       │
+│    └────┬────┘              └──────┬───────┘             └────┬─────┘       │
+│         │                          │                          │            │
+│    ┌────┴────┐              ┌──────┴──────┐            ┌──────┴──────┐     │
+│    │         │              │             │            │             │     │
+│  Log      Audit         Network     Perimeter      Participants     │     │
+│  Archive                                                             │     │
+│    │         │              │             │                          │     │
+│    │    ┌────┴────┐    ┌────┴────┐   ┌────┴────┐                    │     │
+│    │    │GuardDuty│    │   TGW   │   │Firewall │                    │     │
+│    │    │Sec Hub  │    │   VPN   │   │  NAT    │                    │     │
+│    │    │Config   │    │  IPAM   │   │DNS FW   │                    │     │
+│    │    │Inspector│    │Route 53 │   │  WAF    │                    │     │
+│    │    │Macie    │    │Endpoints│   │         │                    │     │
+│    │    │Detective│    └─────────┘   └─────────┘                    │     │
+│    │    │Access   │                                                  │     │
+│    │    │Analyzer │                                                  │     │
+│    │    └─────────┘                                                  │     │
+│    │                                                                 │     │
+│    └── All logs centralized here:                                   │     │
+│        - CloudTrail (all API calls)                                 │     │
+│        - VPC Flow Logs (all network traffic)                        │     │
+│        - Config snapshots                                           │     │
+│        - GuardDuty findings                                         │     │
+│        - Security Hub findings                                       │     │
+│        - DNS query logs                                             │     │
+│        - Firewall logs                                              │     │
+│        - ALB/NLB access logs                                        │     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Full Best Practices Checklist
+
+#### 🔴 High Priority (Must Have)
+
+| Category | Service | Purpose |
+|----------|---------|---------|
+| **Foundation** | Control Tower + LZA | Account management & governance |
+| **Identity** | Identity Center + External IdP | SSO with Entra ID, Okta, etc. |
+| **Networking** | Hub & Spoke with TGW | Centralized traffic control |
+| **Threat Detection** | GuardDuty | Detect threats across all accounts |
+| **Compliance** | Security Hub | Aggregate & prioritize security findings |
+| **Compliance** | AWS Config + Rules | Check resource compliance continuously |
+| **Audit** | CloudTrail Org Trail | All API calls logged centrally |
+| **Network Logging** | VPC Flow Logs | All network traffic logged |
+| **Access Analysis** | IAM Access Analyzer | Find unintended external access |
+| **Encryption** | KMS Customer Managed Keys | Control over encryption keys |
+| **Encryption** | EBS Default Encryption | All volumes encrypted automatically |
+| **Data Protection** | S3 Block Public Access | Org-wide prevention of public buckets |
+| **SCPs** | Comprehensive Guardrails | Prevent dangerous actions |
+
+#### 🟡 Medium Priority (Should Have)
+
+| Category | Service | Purpose |
+|----------|---------|---------|
+| **DNS** | Route 53 Resolver | Centralized DNS for all accounts |
+| **DNS** | Route 53 DNS Firewall | Block malicious domains |
+| **Private Access** | VPC Endpoints | Access AWS services without internet |
+| **Vulnerability** | Inspector | Scan EC2/ECR for vulnerabilities |
+| **Backup** | AWS Backup | Centralized backup policies |
+| **Instance Mgmt** | SSM Session Manager | No SSH keys, audited access |
+| **Instance Security** | IMDSv2 Enforcement | Prevent metadata credential theft |
+| **IP Management** | IPAM | Manage CIDR allocation centrally |
+| **Network Analysis** | Network Access Analyzer | Find unintended network paths |
+| **Egress Control** | NAT Gateway (HA) | Controlled internet egress |
+| **Firewall** | Network Firewall or 3rd Party | Deep packet inspection |
+
+#### 🟢 Additional (Nice to Have)
+
+| Category | Service | Purpose |
+|----------|---------|---------|
+| **Data Classification** | Macie | Find sensitive data in S3 |
+| **Investigation** | Detective | Security investigation & visualization |
+| **DDoS** | Shield Advanced | Advanced DDoS protection |
+| **Web Apps** | WAF | Protect web applications |
+| **Governance** | Service Catalog | Pre-approved infrastructure products |
+| **Cost** | Budgets & Alerts | Cost governance |
+| **Tagging** | Tag Policies | Enforce tagging standards |
+
+### What LZA Configures Automatically
+
+```yaml
+# security-config.yaml enables:
+centralSecurityServices:
+  delegatedAdminAccount: Audit
+
+  guardDuty:
+    enable: true
+    exportConfiguration:
+      destinationBucket: central-logs
+
+  securityHub:
+    enable: true
+    standards:
+      - AWS Foundational Security Best Practices
+      - CIS AWS Foundations Benchmark
+
+  macie:
+    enable: true
+
+  detective:
+    enable: true
+
+accessAnalyzer:
+  enable: true
+
+awsConfig:
+  enableConfigurationRecorder: true
+  ruleSets:
+    - rules:
+        - name: ec2-instance-no-public-ip
+        - name: encrypted-volumes
+        - name: s3-bucket-ssl-requests-only
+        - name: root-account-mfa-enabled
+        - name: iam-user-mfa-enabled
+        # ... 50+ more rules
+
+cloudWatch:
+  metricSets:
+    - metrics:
+        - filterName: RootAccountUsage
+        - filterName: UnauthorizedAPICalls
+        - filterName: IAMPolicyChanges
+        # ... security metrics with alarms
+
+keyManagementService:
+  keySets:
+    - name: Central-Key
+      deploymentTargets: ALL
+```
+
+### What We'll Deploy
+
+```
+1. Control Tower (foundation)
+   └── Creates Security OU, LogArchive, Audit automatically
+   └── Baseline guardrails enabled
+
+2. LZA on top (customization)
+   ├── Infrastructure OU
+   │   ├── Network account
+   │   │   ├── Transit Gateway
+   │   │   ├── Site-to-Site VPN (if needed)
+   │   │   ├── Route 53 Resolver
+   │   │   ├── IPAM
+   │   │   └── VPC Endpoints (shared)
+   │   │
+   │   └── Perimeter account
+   │       ├── Network Firewall / 3rd party firewall
+   │       ├── NAT Gateways (HA)
+   │       ├── DNS Firewall
+   │       └── WAF (if web apps)
+   │
+   ├── Security OU
+   │   ├── LogArchive account
+   │   │   ├── CloudTrail logs (all accounts)
+   │   │   ├── VPC Flow Logs (all accounts)
+   │   │   ├── Config snapshots
+   │   │   ├── GuardDuty findings
+   │   │   ├── DNS query logs
+   │   │   └── Firewall logs
+   │   │
+   │   └── Audit account
+   │       ├── GuardDuty (delegated admin)
+   │       ├── Security Hub (delegated admin)
+   │       ├── Config (delegated admin)
+   │       ├── Inspector (delegated admin)
+   │       ├── Macie (delegated admin)
+   │       ├── Detective (delegated admin)
+   │       ├── IAM Access Analyzer
+   │       └── Security dashboards
+   │
+   ├── Workloads OU
+   │   └── Participant accounts
+   │       ├── VPC (created by platform team)
+   │       ├── TGW attachment
+   │       ├── EBS encryption enabled
+   │       ├── IMDSv2 required
+   │       ├── SSM for instance access
+   │       └── SCPs prevent networking changes
+   │
+   └── Identity Center
+       └── Connected to external IdP
+       └── Permission sets per role
+```
+
+### Cost Estimate (Full Best Practice)
+
+| Component | Monthly Cost |
+|-----------|-------------|
+| Control Tower | Free |
+| GuardDuty (5 accounts) | ~$30-100/mo (usage based) |
+| Security Hub | ~$10-50/mo (usage based) |
+| Config | ~$20-50/mo (usage based) |
+| Transit Gateway attachments (6) | ~$216/mo |
+| NAT Gateway (2 AZs) | ~$64/mo |
+| Network Firewall | ~$300/mo |
+| VPN (if needed) | ~$36/mo |
+| VPC Endpoints (shared) | ~$50/mo |
+| CloudWatch Logs storage | ~$30/mo |
+| S3 log storage | ~$20/mo |
+| **Total estimate** | **~$500-900/mo** |
+
+Note: Costs vary based on usage, data transfer, and number of accounts.
+
+---
+
+## Questions for Alejandro
+
+| Question | Why It Matters |
+|----------|----------------|
+| What IdP are we going to use? | Determines Identity Center config (Entra ID, Okta, etc.) |
+| How many participants do we have? | Number of accounts & TGW attachments |
+| Do participants share resources? | TGW route tables configuration |
+| Do participants need to connect to NATO on-prem systems? | If yes → Site-to-Site VPN in Network account |
+| Do participants need to access private resources (no public IP)? | If yes → Client VPN |
+| Which firewall vendor (if any)? | Perimeter account config (AWS Network Firewall, FortiGate, Palo Alto, etc.) |
+
+---
+
+## Current Accounts
+
+| Name | Account ID | Email |
+|------|------------|-------|
+| adrilab (Management) | 509624333612 | adri@adrilab.com |
+| LogArchive | 545586473833 | adrilab.mail+log@gmail.com |
+| Audit | 511949651909 | adrilab.mail+security@gmail.com |
+| Participants | 231222198517 | adrilab.mail+participants@gmail.com |
+
