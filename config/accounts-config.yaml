@@ -1,23 +1,23 @@
 ######################################################################
-# CHEAP-MODE ACCOUNTS - Minimal mandatory accounts only
-# UPDATE all email addresses before deployment
+# CONTROL TOWER + LZA ACCOUNTS
+# Using new email aliases (old ones are reserved by closed accounts)
 ######################################################################
 mandatoryAccounts:
   - name: Management
     description: The management (primary) account
-    email: adri@adrilab.com 
+    email: adri@adrilab.com
     organizationalUnit: Root
   - name: LogArchive
     description: The log archive account for centralized logging
-    email: adrilab.mail+log@gmail.com 
+    email: adrilab.mail+log2@gmail.com
     organizationalUnit: Security
   - name: Audit
     description: The security tooling/audit account
-    email: adrilab.mail+security@gmail.com 
+    email: adrilab.mail+audit2@gmail.com
     organizationalUnit: Security
-# Workload accounts
-workloadAccounts:
-  - name: Participants
-    description: Account for workshop participants
-    email: adrilab.mail+participants@gmail.com
-    organizationalUnit: Workloads
+# Workload accounts - will be created after initial deployment
+workloadAccounts: []
+#  - name: Participants
+#    description: Account for workshop participants
+#    email: adrilab.mail+participants2@gmail.com
+#    organizationalUnit: Workloads

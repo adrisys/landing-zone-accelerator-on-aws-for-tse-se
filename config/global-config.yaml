@@ -1,14 +1,12 @@
 ######################################################################
-# CHEAP-MODE LZA CONFIGURATION - Minimal cost baseline
-# No Control Tower, single region, minimal logging
+# CONTROL TOWER + LZA CONFIGURATION - Fresh deployment
+# Control Tower manages baseline, LZA adds customizations
 ######################################################################
 homeRegion: "{{ AcceleratorHomeRegion }}"
 enabledRegions:
   - "{{ AcceleratorHomeRegion }}"
-# NOTE: eu-south-2 removed because it's an opt-in region not enabled in child accounts
-# To add: Enable region in each account first, then add here
-# Using OrganizationAccountAccessRole since we're NOT using Control Tower
-managementAccountAccessRole: OrganizationAccountAccessRole
+# Using AWSControlTowerExecution role for Control Tower environments
+managementAccountAccessRole: AWSControlTowerExecution
 tags:
   - key: Accelerator
     value: "{{ AcceleratorPrefix }}"
@@ -20,19 +18,20 @@ cdkOptions:
   useManagementAccessRole: true
 # Required: Cannot disable after enabling
 useV2Stacks: true
-# Control Tower is disabled
+# Control Tower is enabled - LZA will set it up
 controlTower:
-  enable: false
+  enable: true
 # Minimal logging configuration
 logging:
   account: LogArchive
+  # CloudTrail is managed by Control Tower - disable LZA CloudTrail
   cloudtrail:
-    enable: true
-    organizationTrail: true
+    enable: false
+    organizationTrail: false
     organizationTrailSettings:
       multiRegionTrail: false
-      globalServiceEvents: true
-      managementEvents: true
+      globalServiceEvents: false
+      managementEvents: false
       s3DataEvents: false
       lambdaDataEvents: false
       sendToCloudWatchLogs: false

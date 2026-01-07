@@ -100,7 +100,7 @@ The secret name MUST be `accelerator/github-token` - it's hardcoded in LZA.
 | Source Location | `github` |
 | Repository Owner | `awslabs` |
 | Repository Name | `landing-zone-accelerator-on-aws` |
-| Branch Name | `release/v1.14.1` |
+| Branch Name | `release/v1.14.2` |
 | Control Tower Environment | `No` |
 | Configuration Repository Location | `s3` |
 | Use Existing Config Repository | `No` |
@@ -889,16 +889,27 @@ Note: Costs vary based on usage, data transfer, and number of accounts.
 
 This section documents deploying AWS Control Tower first, then LZA on top of it.
 
-### Why Control Tower + LZA?
+### Control Tower vs Organizations: Comprehensive Comparison
 
-| Aspect | Standalone LZA | Control Tower + LZA |
-|--------|----------------|---------------------|
-| Account creation | LZA creates accounts (can have issues) | Control Tower handles it cleanly |
-| Lambda quota issues | Must manually request in each account | Still manual (use quota template) |
-| Guardrails | Manual SCP setup | AWS-managed guardrails included |
-| AWS Support | "You built it" | Better support from AWS |
-| Troubleshooting | Complex | Fewer edge cases |
-| Cost | ~$0-2/mo (if Config disabled) | ~$6-10/mo (Config required) |
+The following comparison helps you decide which deployment method is right for your use case:
+
+| Aspect | Without Control Tower (Organizations only) | With Control Tower |
+| ------ | ------------------------------------------- | ------------------ |
+| **Account Creation** | LZA creates accounts directly via Organizations API | Control Tower Account Factory creates accounts with guardrails pre-applied |
+| **Identity/SSO** | Manual IAM setup per account | AWS Identity Center automatically configured with SSO portal |
+| **Guardrails** | Only what you define in LZA config (SCPs, Config rules) | Control Tower mandatory guardrails + detective controls + LZA additions |
+| **Account Baselines** | LZA deploys baselines via CloudFormation | Control Tower applies its own baseline + LZA adds on top |
+| **Drift Detection** | Manual / custom | Control Tower dashboard shows governance drift |
+| **Dashboard** | None (just CloudFormation stacks) | Control Tower console shows account compliance status |
+| **Log Archive/Audit** | You configure them in LZA | Control Tower requires and auto-configures these accounts |
+| **Cost** | Minimal (just LZA resources) | Same + Control Tower overhead (minimal additional cost) |
+| **Complexity** | Simpler initial setup | More moving parts, but better long-term governance |
+| **Recovery** | Easier to tear down/rebuild | Harder to fully remove Control Tower |
+
+**Recommendations:**
+
+- **Without Control Tower**: Better for dev/test environments, experimentation, or when you want full control and simpler teardown
+- **With Control Tower**: Recommended for production environments, enterprise deployments, and when you need governance visibility and centralized SSO
 
 ### Prerequisites
 
@@ -1018,7 +1029,7 @@ mandatoryAccounts:
 | Source Location | `github` |
 | Repository Owner | `awslabs` |
 | Repository Name | `landing-zone-accelerator-on-aws` |
-| Branch Name | `release/v1.14.1` |
+| Branch Name | `release/v1.14.2` |
 | Configuration Repository Location | `s3` |
 | Use Existing Config Repository | `No` |
 | Enable Approval Stage | `Yes` |
@@ -1101,6 +1112,7 @@ aws s3 sync ./config s3://aws-accelerator-config-ACCOUNT_ID-REGION/
 **Cause:** Pre-existing resources conflict with Control Tower.
 
 **Fix:**
+
 - Delete any existing SCPs (except FullAWSAccess)
 - Delete any existing OUs named "Security" or "Sandbox"
 - Disable Identity Center if enabled
@@ -1111,6 +1123,135 @@ aws s3 sync ./config s3://aws-accelerator-config-ACCOUNT_ID-REGION/
 **Cause:** Config mismatch between Control Tower accounts and LZA config.
 
 **Fix:** Ensure `accounts-config.yaml` emails exactly match Control Tower account emails.
+
+### Migrating from Standalone LZA to Control Tower + LZA
+
+> **Note:** The following issues were encountered specifically because we had previously deployed standalone LZA (without Control Tower) and then attempted to deploy Control Tower + LZA. If you're starting fresh with Control Tower, you won't encounter these problems.
+
+#### Issue: Suspended accounts block Control Tower account creation
+
+**Error:** When enabling Control Tower, it tries to create LogArchive and Audit accounts, but the emails were already used by accounts from the previous standalone LZA deployment that are now suspended/closed.
+
+**Cause:** AWS account emails cannot be reused for 90 days after account closure. The old LogArchive and Audit accounts from standalone LZA still exist in a suspended state.
+
+**Fix:** Use different email aliases for the new Control Tower accounts:
+
+```
+# Old (standalone LZA)
+adrilab.mail+log@gmail.com      → Suspended
+adrilab.mail+security@gmail.com → Suspended
+
+# New (Control Tower)
+adrilab.mail+log2@gmail.com      → New LogArchive
+adrilab.mail+security2@gmail.com → New Audit
+```
+
+#### Issue: "Account not in configuration" validation error
+
+**Error:**
+
+```
+Found account with id 545586473833 in OU Root that is not in the configuration.
+Account with Id 545586473833 and email adrilab.mail+log@gmail.com is not in the accounts
+configuration and is not a member of an ignored OU.
+```
+
+**Cause:** The suspended accounts from the previous standalone LZA deployment still exist in AWS Organizations (in the Root OU). LZA validates that all accounts in the organization are either:
+1. Defined in `accounts-config.yaml`, OR
+2. In an OU marked with `ignore: true`
+
+Since the suspended accounts aren't in our new config and aren't in an ignored OU, validation fails.
+
+**Fix:**
+
+1. Create a "Suspended" OU to hold the old accounts:
+
+```bash
+# Get Root ID
+aws organizations list-roots --query 'Roots[0].Id' --output text
+# Example: r-xxxx
+
+# Create Suspended OU
+aws organizations create-organizational-unit \
+  --parent-id r-xxxx \
+  --name "Suspended"
+# Note the OU ID (e.g., ou-xxxx-xxxxxxxx)
+```
+
+2. Move suspended accounts to the Suspended OU:
+
+```bash
+aws organizations move-account \
+  --account-id 545586473833 \
+  --source-parent-id r-xxxx \
+  --destination-parent-id ou-xxxx-xxxxxxxx
+
+aws organizations move-account \
+  --account-id 511949651909 \
+  --source-parent-id r-xxxx \
+  --destination-parent-id ou-xxxx-xxxxxxxx
+
+aws organizations move-account \
+  --account-id 231222198517 \
+  --source-parent-id r-xxxx \
+  --destination-parent-id ou-xxxx-xxxxxxxx
+```
+
+3. Update `organization-config.yaml` to ignore the Suspended OU:
+
+```yaml
+organizationalUnits:
+  - name: Security
+  - name: Infrastructure
+  - name: Workloads
+  - name: Suspended
+    ignore: true  # LZA will ignore accounts in this OU
+```
+
+4. Delete the failed CloudFormation stack (if any):
+
+```bash
+# Check for failed stacks
+aws cloudformation list-stacks \
+  --stack-status-filter ROLLBACK_COMPLETE \
+  --query 'StackSummaries[?starts_with(StackName, `AWSAccelerator`)].StackName'
+
+# Disable termination protection and delete
+aws cloudformation update-termination-protection \
+  --no-enable-termination-protection \
+  --stack-name AWSAccelerator-PrepareStack-ACCOUNT_ID-REGION
+
+aws cloudformation delete-stack \
+  --stack-name AWSAccelerator-PrepareStack-ACCOUNT_ID-REGION
+```
+
+5. Upload updated config and restart the pipeline:
+
+```bash
+# Zip and upload config
+cd config && zip -r ../aws-accelerator-config.zip . && cd ..
+aws s3 cp aws-accelerator-config.zip \
+  s3://aws-accelerator-config-ACCOUNT_ID-REGION/zipped/aws-accelerator-config.zip
+
+# Restart pipeline
+aws codepipeline start-pipeline-execution --name AWSAccelerator-Pipeline
+```
+
+#### Issue: Identity Center user automatically created
+
+**Observation:** After enabling Control Tower, a user was automatically created in AWS Identity Center.
+
+**Cause:** This is expected behavior. Control Tower automatically sets up AWS Identity Center (formerly AWS SSO) and creates an initial admin user based on the email provided during Control Tower setup.
+
+**This is a benefit, not a problem:**
+
+| Before (standalone LZA) | After (Control Tower) |
+| ----------------------- | --------------------- |
+| Manual IAM users per account | Single Identity Center user with SSO |
+| Separate credentials per account | One login for all accounts |
+| Manual role management | Permission Sets applied centrally |
+
+You'll receive an email at the admin email address with instructions to set up your password and access the SSO portal.
 
 ### Cost Breakdown (Control Tower + LZA Minimal)
 

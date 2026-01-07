@@ -1,12 +1,14 @@
 ######################################################################
-# CHEAP-MODE ORGANIZATION - Simple OUs, no SCPs initially
-# Add SCPs after initial LZA deployment succeeds
+# CONTROL TOWER + LZA ORGANIZATION
+# Suspended OU contains closed accounts that LZA should ignore
 ######################################################################
 enable: true
 organizationalUnits:
   - name: Security
   - name: Infrastructure
   - name: Workloads
+  - name: Suspended
+    ignore: true  # Ignore suspended/closed accounts in this OU
 # Quarantine disabled initially to reduce complexity
 quarantineNewAccounts:
   enable: false
