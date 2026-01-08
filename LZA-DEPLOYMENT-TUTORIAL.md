@@ -1253,6 +1253,53 @@ aws codepipeline start-pipeline-execution --name AWSAccelerator-Pipeline
 
 You'll receive an email at the admin email address with instructions to set up your password and access the SSO portal.
 
+### What You Get After Successful Deployment
+
+After the pipeline succeeds, here's what you have:
+
+#### AWS Organization Structure
+
+```
+Root
+├── Security (OU)
+│   ├── Audit - Security tooling, GuardDuty admin, Config aggregator
+│   └── LogArchive - Centralized logs, CloudTrail, Config history
+├── Infrastructure (OU) - Ready for shared services accounts
+├── Workloads (OU) - Ready for application accounts
+├── Suspended (OU) - Old accounts from previous deployments (ignored)
+└── Management - Organization management, billing, LZA pipeline
+```
+
+#### Deployed Components
+
+| Component | What It Does |
+|-----------|--------------|
+| **AWS Control Tower** | Governance framework, guardrails, Account Factory |
+| **IAM Identity Center (SSO)** | Single sign-on to all accounts via portal |
+| **AWS CloudTrail** | Org-wide trail, logs to LogArchive S3 bucket |
+| **AWS Config** | Compliance recording across all accounts |
+| **GuardDuty** | Threat detection, delegated to Audit account |
+| **Security Hub** | Security posture dashboard (if enabled) |
+| **Service Control Policies** | Guardrails preventing risky actions |
+| **Centralized Logging** | S3 buckets in LogArchive for all logs |
+| **KMS Keys** | Encryption keys for logs and secrets |
+
+#### Access Points
+
+| Resource | Location |
+|----------|----------|
+| SSO Portal | `https://d-xxxxxxxxxx.awsapps.com/start` (from Identity Center) |
+| Control Tower Dashboard | AWS Console → Control Tower |
+| LZA Pipeline | AWS Console → CodePipeline → AWSAccelerator-Pipeline |
+| Config Files | S3 bucket `aws-accelerator-config-ACCOUNT-REGION` |
+
+#### Next Steps After Deployment
+
+1. **Add workload accounts** - Edit `accounts-config.yaml` and push to trigger pipeline
+2. **Customize SCPs** - Edit `service-control-policies/` in `organization-config.yaml`
+3. **Add networking** - Configure VPCs, Transit Gateway in `network-config.yaml`
+4. **Create Permission Sets** - Add more IAM Identity Center permission sets for teams
+
 ### Cost Breakdown (Control Tower + LZA Minimal)
 
 | Service | Monthly Cost |
@@ -1265,6 +1312,7 @@ You'll receive an email at the admin email address with instructions to set up y
 | **Total baseline** | **~$7-11/month** |
 
 Additional costs if you enable:
+
 | Service | Additional Cost |
 |---------|-----------------|
 | GuardDuty | ~$10-30/month |
@@ -1272,3 +1320,213 @@ Additional costs if you enable:
 | Transit Gateway | ~$36/month + attachments |
 | NAT Gateway | ~$32/month per AZ |
 
+---
+
+## Authentication and User Management
+
+### Where Are the Users?
+
+With Control Tower + LZA, users are centralized in **IAM Identity Center** (in the Management account). They access all accounts through SSO:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Management Account                                             │
+│                                                                 │
+│  ┌───────────────────────────────────────┐                     │
+│  │  IAM Identity Center                   │                     │
+│  │                                        │                     │
+│  │  Users:                                │                     │
+│  │  - adri@adrilab.com                    │                     │
+│  │  - developer@company.com               │                     │
+│  │                                        │                     │
+│  │  Permission Sets:                      │                     │
+│  │  - AWSAdministratorAccess              │                     │
+│  │  - AWSReadOnlyAccess                   │                     │
+│  │  - AWSPowerUserAccess                  │                     │
+│  └───────────────────────────────────────┘                     │
+│                           │                                     │
+└───────────────────────────┼─────────────────────────────────────┘
+                            │
+         ┌──────────────────┼──────────────────┐
+         │                  │                  │
+         ▼                  ▼                  ▼
+   ┌───────────┐      ┌───────────┐      ┌───────────┐
+   │ Management│      │   Audit   │      │ LogArchive│
+   └───────────┘      └───────────┘      └───────────┘
+```
+
+### No IAM Users Needed
+
+| Old Way (per-account IAM users) | New Way (Identity Center) |
+|---------------------------------|---------------------------|
+| Create IAM user in each account | Create user once in Identity Center |
+| Manage passwords per account | Single password/MFA for all |
+| Separate credentials per account | One login, pick account |
+| Access keys laying around | Temporary credentials auto-rotated |
+
+### How Authentication Works
+
+| Identity Type | Where | Purpose |
+|---------------|-------|---------|
+| **IAM Identity Center users** | Management account (centralized) | All human access |
+| **Root user** | Each account (locked down) | Break-glass emergency only |
+| **IAM Roles** | Each account | Service-to-service, automation |
+
+### Access Levels Example
+
+```
+# Admins - full access to all accounts
+User: adri@adrilab.com
+  └── Management:  AWSAdministratorAccess
+  └── Audit:       AWSAdministratorAccess
+  └── LogArchive:  AWSAdministratorAccess
+  └── Workload:    AWSAdministratorAccess
+
+# Developer - limited access
+User: dev@company.com
+  └── Workload:    AWSPowerUserAccess (no IAM changes)
+
+# Security Auditor - read-only
+User: security@company.com
+  └── All accounts: AWSReadOnlyAccess
+```
+
+---
+
+## Centralized Logging
+
+### Where Do Logs Go?
+
+All logs flow to the **LogArchive account**:
+
+```
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│   Management    │  │     Audit       │  │    Workload     │
+│                 │  │                 │  │                 │
+│  CloudTrail ────┼──┼──CloudTrail ────┼──┼──CloudTrail ────┼──┐
+│  Config ────────┼──┼──Config ────────┼──┼──Config ────────┼──┤
+│  VPC Flow Logs ─┼──┼──VPC Flow Logs ─┼──┼──VPC Flow Logs ─┼──┤
+│                 │  │                 │  │                 │  │
+└─────────────────┘  └─────────────────┘  └─────────────────┘  │
+                                                                │
+                     ┌──────────────────────────────────────────┘
+                     ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  LogArchive Account                                             │
+│                                                                 │
+│  S3 Buckets:                                                    │
+│  aws-accelerator-central-logs-ACCOUNT-REGION                   │
+│  ├── cloudtrail/                                                │
+│  ├── config/                                                    │
+│  ├── vpc-flow-logs/                                             │
+│  └── guardduty/                                                 │
+│                                                                 │
+│  - KMS encrypted at rest                                        │
+│  - Lifecycle policies for cost optimization                     │
+│  - SCPs prevent log deletion                                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Log Types and Location
+
+| Log Type | Local (Original Account) | Central (LogArchive) |
+|----------|--------------------------|----------------------|
+| **CloudTrail** | ❌ No (Org trail only) | ✅ Yes |
+| **AWS Config** | ❌ No | ✅ Yes |
+| **VPC Flow Logs** | Optional (CloudWatch) | ✅ Yes (S3) |
+| **CloudWatch Logs** | ✅ Yes (stays local) | ❌ No (unless configured) |
+| **Application Logs** | ✅ Yes (stays local) | ❌ No (unless you stream them) |
+
+### Audit Account vs LogArchive Account
+
+| Account | Purpose |
+|---------|---------|
+| **LogArchive** | Stores logs (S3 buckets) |
+| **Audit** | Analyzes logs (GuardDuty admin, Security Hub, Config aggregator) |
+
+---
+
+## Securing Root Credentials
+
+### Every Account Has a Root User
+
+Each AWS account has its own root user that's created automatically. The management account root **cannot** access child accounts - they are completely separate.
+
+```
+Management Root                     Child Account Root
+(your-email@gmail.com)             (your-email+audit@gmail.com)
+         │                                   │
+         ▼                                   ▼
+┌─────────────────┐                ┌─────────────────┐
+│   Management    │       ╳        │     Audit       │
+│    Account      │  No direct     │    Account      │
+│                 │    access      │                 │
+└─────────────────┘                └─────────────────┘
+```
+
+### What Management Root CAN and CANNOT Do
+
+| Action | Can Do? |
+|--------|---------|
+| Create/close child accounts | ✅ Yes |
+| Apply SCPs to child accounts | ✅ Yes |
+| View consolidated billing | ✅ Yes |
+| **Log into child accounts** | ❌ No |
+| **Access child account resources** | ❌ No |
+| **Reset child account root password** | ❌ No |
+
+### Store Root Credentials Securely
+
+Each account's root credentials must be stored securely:
+
+| Account | Email | What to Store |
+|---------|-------|---------------|
+| Management | your-email@gmail.com | Password + MFA recovery |
+| Audit | your-email+audit@gmail.com | Password + MFA recovery |
+| LogArchive | your-email+log@gmail.com | Password + MFA recovery |
+| Workloads | your-email+workloadX@gmail.com | Password + MFA recovery |
+
+**For each root user, store:**
+
+- Account ID
+- Email address
+- Password (strong, unique)
+- MFA device info (backup codes or hardware key serial)
+
+### Where to Store Root Credentials
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **1Password / Bitwarden** | Easy, shareable vault | Cloud dependency |
+| **Hardware vault (YubiKey + encrypted USB)** | Air-gapped | Can be lost |
+| **Printed in safe** | Works offline | Fire/theft risk |
+
+### Best Practice: Hardware MFA for Root
+
+For critical accounts, use hardware MFA keys (YubiKey):
+
+1. Buy 2 YubiKeys per account (primary + backup)
+2. Register both as MFA devices on root
+3. Store backup key in physical safe
+4. Never use root for daily work
+5. Test recovery annually
+
+### SCPs Can Restrict Root in Child Accounts
+
+Even root users can be restricted by SCPs (except in Management account):
+
+```yaml
+# Example SCP - deny root user actions in child accounts
+- name: DenyRootUser
+  statements:
+    - effect: Deny
+      actions:
+        - "*"
+      resources:
+        - "*"
+      conditions:
+        StringLike:
+          "aws:PrincipalArn": "arn:aws:iam::*:root"
+```
+
+This makes root effectively useless in child accounts except for account-level emergencies.
